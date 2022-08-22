@@ -51,3 +51,22 @@ func openshiftSingleNodeClusterStatus(c client.Client) (bool, error) {
 	}
 	return infra.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode, nil
 }
+
+func IsHypershiftCluster(c client.Client) (bool, error) {
+	if os.Getenv("CLUSTER_TYPE") == ClusterTypeOpenshift {
+		return openshiftExternalControlPlaneStatus(c)
+	}
+	return false, nil
+}
+
+func openshiftExternalControlPlaneStatus(c client.Client) (bool, error) {
+	infra := &configv1.Infrastructure{}
+	err := c.Get(context.TODO(), types.NamespacedName{Name: infraResourceName}, infra)
+	if err != nil {
+		return false, err
+	}
+	if infra == nil {
+		return false, fmt.Errorf("getting resource Infrastructure (name: %s) succeeded but object was nil", infraResourceName)
+	}
+	return infra.Status.ControlPlaneTopology == configv1.ExternalTopologyMode, nil
+}
