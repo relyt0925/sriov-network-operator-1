@@ -100,6 +100,8 @@ type Daemon struct {
 	workqueue workqueue.RateLimitingInterface
 
 	mcpName string
+
+	isHypershift bool
 }
 
 const (
@@ -129,6 +131,7 @@ func New(
 	client snclientset.Interface,
 	kubeClient *kubernetes.Clientset,
 	mcClient *mcclientset.Clientset,
+	isHypershift bool,
 	exitCh chan<- error,
 	stopCh <-chan struct{},
 	syncCh <-chan struct{},
@@ -136,16 +139,17 @@ func New(
 	platformType utils.PlatformType,
 ) *Daemon {
 	return &Daemon{
-		name:       nodeName,
-		platform:   platformType,
-		client:     client,
-		kubeClient: kubeClient,
-		mcClient:   mcClient,
-		exitCh:     exitCh,
-		stopCh:     stopCh,
-		syncCh:     syncCh,
-		refreshCh:  refreshCh,
-		nodeState:  &sriovnetworkv1.SriovNetworkNodeState{},
+		name:         nodeName,
+		platform:     platformType,
+		client:       client,
+		kubeClient:   kubeClient,
+		mcClient:     mcClient,
+		isHypershift: isHypershift,
+		exitCh:       exitCh,
+		stopCh:       stopCh,
+		syncCh:       syncCh,
+		refreshCh:    refreshCh,
+		nodeState:    &sriovnetworkv1.SriovNetworkNodeState{},
 		drainer: &drain.Helper{
 			Client:              kubeClient,
 			Force:               true,
@@ -477,12 +481,11 @@ func (dn *Daemon) nodeStateSyncHandler(generation int64) error {
 			}
 		}
 	}
-	if utils.ClusterType == utils.ClusterTypeOpenshift {
+	if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 		if err = dn.getNodeMachinePool(); err != nil {
 			return err
 		}
 	}
-
 	if reqDrain {
 		if !dn.isNodeDraining() {
 			if !dn.disableDrain {
@@ -495,7 +498,7 @@ func (dn *Daemon) nodeStateSyncHandler(generation int64) error {
 				<-done
 			}
 
-			if utils.ClusterType == utils.ClusterTypeOpenshift {
+			if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 				glog.Infof("nodeStateSyncHandler(): pause MCP")
 				if err := dn.pauseMCP(); err != nil {
 					return err
@@ -579,7 +582,7 @@ func (dn *Daemon) completeDrain() error {
 		}
 	}
 
-	if utils.ClusterType == utils.ClusterTypeOpenshift {
+	if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 		glog.Infof("completeDrain(): resume MCP %s", dn.mcpName)
 		pausePatch := []byte("{\"spec\":{\"paused\":false}}")
 		if _, err := dn.mcClient.MachineconfigurationV1().MachineConfigPools().Patch(context.Background(), dn.mcpName, types.MergePatchType, pausePatch, metav1.PatchOptions{}); err != nil {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 
@@ -127,6 +128,17 @@ func runStartCmd(cmd *cobra.Command, args []string) {
 	snclient := snclientset.NewForConfigOrDie(config)
 	kubeclient := kubernetes.NewForConfigOrDie(config)
 	mcclient := mcclientset.NewForConfigOrDie(config)
+	isHypershift := false
+	if utils.ClusterType == utils.ClusterTypeOpenshift {
+		infraClient, err := client.New(config, client.Options{})
+		if err != nil {
+			panic(err)
+		}
+		isHypershift, err = utils.IsHypershiftCluster(infraClient)
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	config.Timeout = 5 * time.Second
 	writerclient := snclientset.NewForConfigOrDie(config)
@@ -179,6 +191,7 @@ func runStartCmd(cmd *cobra.Command, args []string) {
 		snclient,
 		kubeclient,
 		mcclient,
+		isHypershift,
 		exitCh,
 		stopCh,
 		syncCh,

@@ -69,8 +69,14 @@ func (r *SriovNetworkPoolConfigReconciler) Reconcile(ctx context.Context, req ct
 			}
 		}
 		if utils.ClusterType == utils.ClusterTypeOpenshift {
-			if err = r.syncOvsHardwareOffloadMachineConfigs(instance, false); err != nil {
+			isHypershift, err := utils.IsHypershiftCluster(r.Client)
+			if err != nil {
 				return reconcile.Result{}, err
+			}
+			if !isHypershift {
+				if err = r.syncOvsHardwareOffloadMachineConfigs(instance, false); err != nil {
+					return reconcile.Result{}, err
+				}
 			}
 		}
 	} else {
@@ -79,10 +85,16 @@ func (r *SriovNetworkPoolConfigReconciler) Reconcile(ctx context.Context, req ct
 			// our finalizer is present, so lets handle any external dependency
 			logger.Info("delete SriovNetworkPoolConfig CR", "Namespace", instance.Namespace, "Name", instance.Name)
 			if utils.ClusterType == utils.ClusterTypeOpenshift {
-				if err = r.syncOvsHardwareOffloadMachineConfigs(instance, true); err != nil {
-					// if fail to delete the external dependency here, return with error
-					// so that it can be retried
+				isHypershift, err := utils.IsHypershiftCluster(r.Client)
+				if err != nil {
 					return reconcile.Result{}, err
+				}
+				if !isHypershift {
+					if err = r.syncOvsHardwareOffloadMachineConfigs(instance, true); err != nil {
+						// if fail to delete the external dependency here, return with error
+						// so that it can be retried
+						return reconcile.Result{}, err
+					}
 				}
 			}
 			// remove our finalizer from the list and update it.
