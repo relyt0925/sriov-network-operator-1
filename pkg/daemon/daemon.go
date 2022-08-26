@@ -101,6 +101,8 @@ type Daemon struct {
 	workqueue workqueue.RateLimitingInterface
 
 	mcpName string
+
+	isHypershift bool
 }
 
 const (
@@ -135,6 +137,7 @@ func New(
 	client snclientset.Interface,
 	kubeClient kubernetes.Interface,
 	mcClient mcclientset.Interface,
+	isHypershift bool,
 	exitCh chan<- error,
 	stopCh <-chan struct{},
 	syncCh <-chan struct{},
@@ -142,16 +145,17 @@ func New(
 	platformType utils.PlatformType,
 ) *Daemon {
 	return &Daemon{
-		name:       nodeName,
-		platform:   platformType,
-		client:     client,
-		kubeClient: kubeClient,
-		mcClient:   mcClient,
-		exitCh:     exitCh,
-		stopCh:     stopCh,
-		syncCh:     syncCh,
-		refreshCh:  refreshCh,
-		nodeState:  &sriovnetworkv1.SriovNetworkNodeState{},
+		name:         nodeName,
+		platform:     platformType,
+		client:       client,
+		kubeClient:   kubeClient,
+		mcClient:     mcClient,
+		isHypershift: isHypershift,
+		exitCh:       exitCh,
+		stopCh:       stopCh,
+		syncCh:       syncCh,
+		refreshCh:    refreshCh,
+		nodeState:    &sriovnetworkv1.SriovNetworkNodeState{},
 		drainer: &drain.Helper{
 			Client:              kubeClient,
 			Force:               true,
@@ -205,7 +209,7 @@ func (dn *Daemon) tryCreateUdevRuleWrapper() error {
 
 // Run the config daemon
 func (dn *Daemon) Run(stopCh <-chan struct{}, exitCh <-chan error) error {
-	glog.V(0).Info("Run(): start daemon")
+	glog.V(0).Infof("Run(): start daemon. isHypershift: %t", dn.isHypershift)
 	// Only watch own SriovNetworkNodeState CR
 	defer utilruntime.HandleCrash()
 	defer dn.workqueue.ShutDown()
@@ -487,12 +491,11 @@ func (dn *Daemon) nodeStateSyncHandler() error {
 			}
 		}
 	}
-	if utils.ClusterType == utils.ClusterTypeOpenshift {
+	if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 		if err = dn.getNodeMachinePool(); err != nil {
 			return err
 		}
 	}
-
 	if reqDrain {
 		if !dn.isNodeDraining() {
 			if !dn.disableDrain {
@@ -505,7 +508,7 @@ func (dn *Daemon) nodeStateSyncHandler() error {
 				<-done
 			}
 
-			if utils.ClusterType == utils.ClusterTypeOpenshift {
+			if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 				glog.Infof("nodeStateSyncHandler(): pause MCP")
 				if err := dn.pauseMCP(); err != nil {
 					return err
@@ -589,7 +592,7 @@ func (dn *Daemon) completeDrain() error {
 		}
 	}
 
-	if utils.ClusterType == utils.ClusterTypeOpenshift {
+	if utils.ClusterType == utils.ClusterTypeOpenshift && !dn.isHypershift {
 		glog.Infof("completeDrain(): resume MCP %s", dn.mcpName)
 		pausePatch := []byte("{\"spec\":{\"paused\":false}}")
 		if _, err := dn.mcClient.MachineconfigurationV1().MachineConfigPools().Patch(context.Background(), dn.mcpName, types.MergePatchType, pausePatch, metav1.PatchOptions{}); err != nil {
