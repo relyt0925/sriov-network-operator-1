@@ -77,9 +77,13 @@ func (r *SriovNetworkPoolConfigReconciler) Reconcile(ctx context.Context, req ct
 				return reconcile.Result{}, err
 			}
 		}
-		if utils.ClusterType == utils.ClusterTypeOpenshift && !isHypershift {
-			if err = r.syncOvsHardwareOffloadMachineConfigs(instance, false); err != nil {
-				return reconcile.Result{}, err
+		if utils.ClusterType == utils.ClusterTypeOpenshift {
+			if !isHypershift {
+				if err = r.syncOvsHardwareOffloadMachineConfigs(instance, false); err != nil {
+					return reconcile.Result{}, err
+				}
+			} else {
+				logger.Info("Ignoring request to enable HWOL (running on Hypershift)")
 			}
 		}
 	} else {
