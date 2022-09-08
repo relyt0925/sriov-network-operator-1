@@ -101,6 +101,7 @@ var _ = Describe("Config Daemon", func() {
 			client,
 			kubeClient,
 			mcClient,
+			false,
 			exitCh,
 			stopCh,
 			syncCh,
